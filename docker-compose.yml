@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend # Specify the directory containing the Dockerfile
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    env_file:
+      - ./backend/.env # Load environment variables from backend/.env
+    # command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # The CMD in your Dockerfile serves the same purpose, so you can often omit this
+    # unless you need to override the Dockerfile's CMD. Let's rely on Dockerfile CMD for now.
+    volumes:
+      # Optional: Mount your source code. This is useful for development
+      # because code changes on your host will be reflected instantly in the container
+      # without needing to rebuild the image every time.
+      # - ./backend/app:/app/app
+      - ./backend/requirements.txt:/app/requirements.txt # Ensure requirements.txt is mounted if using volumes for code
+    # depends_on:
+      # - db # If you had a separate database service
