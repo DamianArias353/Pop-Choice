@@ -11,7 +11,7 @@ from openai import AsyncOpenAI   # official async client (>=1.3.0)
 # Set these four env-vars once (e.g. in Docker secrets / .env)
 OPENAI_API_KEY      = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL        = os.getenv("SUPABASE_URL")            # e.g. "https://xxx.supabase.co"
-SUPABASE_API_KEY= os.getenv("SUPABASE_API_KEY")    # API-role key (rw on the table)
+SUPABASE_API_KEY    = os.getenv("SUPABASE_API_KEY")    # API-role key (rw on the table)
 SUPABASE_TABLE      = "movies"                             # destination table name
 
 # Create clients
