@@ -1,15 +1,29 @@
 from fastapi import FastAPI
-from .routes import router # Import the router from routes.py
-# No need to import get_embedding or get_movies directly here anymore
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes import router as movies_router   # o el nombre que uses
 
-# Create FastAPI application instance
-app = FastAPI()
+app = FastAPI(
+    title="PopChoice API",
+    version="0.1.0",
+)
 
-# Include the router from routes.py
-app.include_router(router)
+# ─── CORS ───────────────────────────────────────────────────
+origins = [
+    "http://localhost:3000",     # Vite dev-server
+    "https://tudominio.com",     # tu front en producción
+]
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,       # ["*"] si quieres permitir todos
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ────────────────────────────────────────────────────────────
 
-# --- Root Endpoint (Optional - can also move to routes.py) ---
+app.include_router(movies_router)
+
 @app.get("/")
-def read_root():
-    return {"message": "PopChoice Backend API is running!"}
+async def root():
+    return {"message": "PopChoice backend is running"}
