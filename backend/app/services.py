@@ -6,7 +6,7 @@ import os # Needed for os.getenv calls (if still present or needed)
 # Import functions from the low-level modules using ABSOLUTE IMPORTS relative to 'app'
 # Keep imports needed for the API service functions
 from app.embeddings import get_embedding # Needed for process_movie_data and find_recommendations
-from app.vector_db import save_movie_with_embedding, search_similar_movies
+from app.vector_db import search_similar_movies
 from openai import AsyncOpenAI  # Needed for process_movie_data
 # REMOVE THIS LINE: from app.data.movies import MOVIES_DATA # No longer needed
 
@@ -89,22 +89,32 @@ async def process_movie_data(item: dict): # Replace dict with a proper Pydantic 
 # -----------------------------------------------------------------------------
 async def find_recommendations(query: dict):
     """
-    1) Embedding del input
-    2) Búsqueda de chunks en Supabase/pgvector
-    3) Prompt + ChatCompletion
+    1) Summarize user input using chat_summarize
+    2) Get embedding of the summary
+    3) Search for similar movies
+    4) Return best match
     """
     print("Finding recommendations in service...")
 
-    user_input = query.get("user_input")
-    if not user_input:
-        raise ValueError("User query missing 'user_input' field.")
+    # Get the three questions
+    q1 = query.get("q1", "")
+    q2 = query.get("q2", "")
+    q3 = query.get("q3", "")
+    
+    if not all([q1, q2, q3]):
+        raise ValueError("Missing required questions in query.")
 
-    # 1) Embedding de la consulta
-    query_embedding = await get_embedding(user_input)   # si get_embedding es async
+    # Combine questions for summarization
+    combined_input = f"Favorite movie and why: {q1}\nMood for new or classic: {q2}\nFun or serious: {q3}"
+    
+    # Get a summary of what the user is looking for
+    summary = await chat_summarize(combined_input)
+    print(f"Summarized input: {summary}")
 
-    # 2) Buscar en la base vectorial (chunks ya embebidos)
-    # Esta función debe devolver algo como:
-    #   [{"content": "...", "similarity": 0.87}, ...]
+    # Get embedding of the summary
+    query_embedding = await get_embedding(summary)
+
+    # Search for similar movies
     matches = await search_similar_movies(
         embedding=query_embedding,
         threshold=0.50,
@@ -112,23 +122,11 @@ async def find_recommendations(query: dict):
     )
 
     if not matches:
-        return {"answer": "Sorry, I don't have enough data to answer that."}
+        return {"content": "Sorry, I don't have enough data to answer that.", "similarity": 0.0}
 
-    context = "\n".join(m["content"] for m in matches)
-
-    # 3) ChatCompletion
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",
-         "content": f"Context: {context}\nQuestion: {user_input}"}
-    ]
-
-    resp = await openai_client.chat.completions.create(
-        model="gpt-4o-mini",          # o el modelo que uses
-        messages=messages,
-        temperature=0.65,
-        frequency_penalty=0.5,
-    )
-
-    answer = resp.choices[0].message.content
-    return {"answer": answer}
+    # Return the best match
+    best_match = matches[0]
+    return {
+        "content": best_match["content"],
+        "similarity": best_match["similarity"]
+    }

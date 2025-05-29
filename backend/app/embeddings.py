@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
 import os
-client = AsyncOpenAI(openai_api_key=os.environ["OPENAI_API_KEY"])
+
+client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 async def chat_summarize(text: str) -> str:
     messages = [

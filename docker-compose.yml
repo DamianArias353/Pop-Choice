@@ -16,3 +16,16 @@ services:
       - ./backend/requirements.txt:/app/requirements.txt # Ensure requirements.txt is mounted if using volumes for code
     # depends_on:
       # - db # If you had a separate database service
+
+  ###############################################################################
+  # Frontend React + Tailwind – served by Nginx (built via multi‑stage Dockerfile)
+  ###############################################################################
+  frontend:
+    build: ./frontend           # Dockerfile inside frontend/
+    ports:
+      - "3000:80"               # Host 3000 → Container 80 (Nginx default)
+    environment:
+      # URL that the React build will bake in at compile‑time
+      - VITE_API_URL=http://localhost:8000/api
+    depends_on:
+      - backend
