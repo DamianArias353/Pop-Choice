@@ -6,7 +6,7 @@ import os # Needed for os.getenv calls (if still present or needed)
 # Import functions from the low-level modules using ABSOLUTE IMPORTS relative to 'app'
 # Keep imports needed for the API service functions
 from app.embeddings import get_embedding # Needed for process_movie_data and find_recommendations
-from app.vector_db import save_movie_with_embedding 
+from app.vector_db import save_movie_with_embedding, search_similar_movies
 from openai import AsyncOpenAI  # Needed for process_movie_data
 # REMOVE THIS LINE: from app.data.movies import MOVIES_DATA # No longer needed
 
@@ -32,7 +32,7 @@ async def test_openai_service():
     """
     test_text = "Hello from the FastAPI backend service!"
     # Assume get_embedding might be async and await it
-    embedding = get_embedding(test_text) # Await if get_embedding is async
+    embedding = await get_embedding(test_text) # Await if get_embedding is async
 
     if embedding is None:
         raise ValueError("Failed to get embedding from OpenAI in service.")
@@ -44,23 +44,13 @@ async def test_supabase_service():
      Service logic to test Supabase connection and data fetch function.
      Calls get_movies from app.vector_db (if get_movies exists and is relevant).
      """
-     # Assuming get_movies is still needed for this test endpoint
-     # from app.vector_db import get_movies # Import if needed
-     # movies_data = get_movies(limit=2) # Await if get_movies is async
+     # Quick connectivity test: fetch 1 movie id via RPC
+     test_rows = await search_similar_movies([0.0]*1536, top_k=1, threshold=0.0)
 
-     # You might need to create a simple test function in vector_db.py
-     # that just checks if the client is initialized and can connect.
-     # Or, since the seed script populated the table, test fetching actual data.
+     if test_rows is None:
+         raise ValueError("Failed to fetch data from Supabase in service.")
 
-     # Example using a function from vector_db to check connection/fetch data
-     from app.vector_db import get_movies # Assuming get_movies still exists and works
-     movies_data = get_movies(limit=2) # Await if async
-
-     if movies_data is None or not hasattr(movies_data, 'data'):
-         # You might check for specific error messages here if vector_db provides them
-          raise ValueError("Failed to fetch data from Supabase in service.")
-
-     return {"message": "Supabase connection successful from service", "data": movies_data.data}
+     return {"message": "Supabase connection successful from service", "data": test_rows}
 
 
 # --- Service functions for your main logic (Keep these) ---
@@ -81,7 +71,7 @@ async def process_movie_data(item: dict): # Replace dict with a proper Pydantic 
         raise ValueError("Movie item missing 'content' field for embedding.")
 
     # Get embedding for the content (await if get_embedding becomes async)
-    embedding = get_embedding(text_to_embed)
+    embedding = await get_embedding(text_to_embed)
 
     if embedding is None:
          raise ValueError("Could not generate embedding for movie data.")
@@ -111,7 +101,6 @@ async def find_recommendations(query: dict):
 
     # 1) Embedding de la consulta
     query_embedding = await get_embedding(user_input)   # si get_embedding es async
-    # query_embedding = get_embedding(user_input)       # si es sync
 
     # 2) Buscar en la base vectorial (chunks ya embebidos)
     # Esta función debe devolver algo como:
@@ -119,7 +108,7 @@ async def find_recommendations(query: dict):
     matches = await search_similar_movies(
         embedding=query_embedding,
         threshold=0.50,
-        n_results=4
+        top_k=4
     )
 
     if not matches:
