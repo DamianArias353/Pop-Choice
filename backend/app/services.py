@@ -5,7 +5,7 @@ import os # Needed for os.getenv calls (if still present or needed)
 
 # Import functions from the low-level modules using ABSOLUTE IMPORTS relative to 'app'
 # Keep imports needed for the API service functions
-from app.embeddings import get_embedding # Needed for process_movie_data and find_recommendations
+from app.embeddings import get_embedding, chat_summarize # Added chat_summarize
 from app.vector_db import search_similar_movies
 from openai import AsyncOpenAI  # Needed for process_movie_data
 # REMOVE THIS LINE: from app.data.movies import MOVIES_DATA # No longer needed
@@ -91,8 +91,9 @@ async def find_recommendations(query: dict):
     """
     1) Summarize user input using chat_summarize
     2) Get embedding of the summary
-    3) Search for similar movies
-    4) Return best match
+    3) Search for similar movie *chunks*
+    4) Use top chunks as context for language model to generate a movie description
+    5) Return the generated description and the similarity of the best chunk
     """
     print("Finding recommendations in service...")
 
@@ -100,33 +101,63 @@ async def find_recommendations(query: dict):
     q1 = query.get("q1", "")
     q2 = query.get("q2", "")
     q3 = query.get("q3", "")
-    
+
     if not all([q1, q2, q3]):
         raise ValueError("Missing required questions in query.")
 
-    # Combine questions for summarization
+    # Combine questions for initial summarization
     combined_input = f"Favorite movie and why: {q1}\nMood for new or classic: {q2}\nFun or serious: {q3}"
-    
+
     # Get a summary of what the user is looking for
     summary = await chat_summarize(combined_input)
     print(f"Summarized input: {summary}")
 
-    # Get embedding of the summary
+    # Get embedding of the summary for vector search
     query_embedding = await get_embedding(summary)
 
-    # Search for similar movies
+    # Search for similar movie chunks in the vector database
     matches = await search_similar_movies(
         embedding=query_embedding,
-        threshold=0.50,
-        top_k=4
+        threshold=0.50, # Adjust threshold as needed
+        top_k=4         # Retrieve top 4 chunks
     )
 
     if not matches:
-        return {"content": "Sorry, I don't have enough data to answer that.", "similarity": 0.0}
+        # If no matches found, return a specific message
+        return {"content": "Sorry, I couldn't find any movies matching your criteria.", "similarity": 0.0}
 
-    # Return the best match
-    best_match = matches[0]
-    return {
-        "content": best_match["content"],
-        "similarity": best_match["similarity"]
-    }
+    # Format the top matching chunks as context for the language model
+    # We'll use the 'content' of each matching chunk
+    context = "\n---\n".join([m["content"] for m in matches])
+    print(f"Context for LLM:\n{context}")
+
+    # Use the language model (OpenAI Chat Completion) to generate a description
+    # based on the context and the original user query
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT + "\n\nBased on the following movie information chunks and the user's query, provide a concise description of the *most relevant* movie, highlighting why it matches the user's preferences. Include the movie title, year, and key plot points or characteristics mentioned in the context. Focus on the single best recommendation."},
+        {"role": "user",
+         "content": f"Movie Information Chunks:\n{context}\n\nUser Query: {summary}"}
+    ]
+
+    try:
+        resp = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",  # or the model you prefer
+            messages=messages,
+            temperature=0.7,      # Adjust temperature for creativity vs. accuracy
+            max_tokens=200,       # Limit the length of the description
+        )
+        generated_description = resp.choices[0].message.content.strip()
+        print(f"Generated Description: {generated_description}")
+
+        # Return the generated description and the similarity of the best match
+        # We return the similarity of the best match as an indicator of confidence
+        return {
+            "content": generated_description,
+            "similarity": matches[0]["similarity"]
+        }
+
+    except Exception as e:
+        print(f"Error generating description with LLM: {e}")
+        # Fallback in case of LLM error - maybe just return the top chunk content?
+        # Or a generic error message
+        return {"content": "Could not generate a detailed recommendation at this time.", "similarity": 0.0}

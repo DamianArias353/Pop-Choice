@@ -19,7 +19,6 @@ class QueryIn(BaseModel):
     q3: str
 
 class MovieOut(BaseModel):
-    id: int
     content: str
     similarity: float
 
